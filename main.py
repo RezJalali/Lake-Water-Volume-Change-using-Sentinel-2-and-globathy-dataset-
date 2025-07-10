@@ -231,3 +231,93 @@ display(Map)
 # Adjust layout to prevent labels from overlapping
 plt.tight_layout()
 plt.show()
+
+# ============================================================================================
+# Validation
+#+============================================================================================
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_squared_error
+from sklearn.linear_model import LinearRegression
+
+# --- 1. Prepare and Merge DataFrames ---
+# This part remains the same.
+# Ensure the index of the in-situ data is datetime for merging
+df_insitu.index = pd.to_datetime(df_insitu.index)
+
+# Ensure the 'date' column of the results data is datetime
+results_df['date'] = pd.to_datetime(results_df['date'])
+
+# Set the 'date' column as the index for the satellite results
+df_satellite = results_df.set_index('date')
+
+# Merge the two dataframes based on their date index.
+merged_df = pd.merge(
+    df_insitu[['water_level_m']],
+    df_satellite[['volume_km3']],
+    left_index=True,
+    right_index=True,
+    how='inner'
+)
+
+# --- 2. Standardize Data for Comparison ---
+# This part remains the same.
+scaler = StandardScaler()
+merged_df[['water_level_scaled', 'volume_scaled']] = scaler.fit_transform(merged_df[['water_level_m', 'volume_km3']])
+
+# --- 3. Calculate RMSE ---
+# This part remains the same.
+rmse = np.sqrt(mean_squared_error(merged_df['water_level_scaled'], merged_df['volume_scaled']))
+
+print(f"Validation DataFrame (first 5 rows):\n{merged_df.head()}\n")
+print(f"Root Mean Square Error (RMSE) between standardized gauge height and satellite volume: {rmse:.4f}")
+
+# --- 4. Create the Scatter Plot and Regression Line with Matplotlib and Sklearn ---
+plt.figure(figsize=(12, 8), dpi=100)
+
+# Create the scatter plot
+plt.scatter(
+    merged_df['water_level_scaled'],
+    merged_df['volume_scaled'],
+    alpha=0.6,
+    color='royalblue',
+    label='Data Points'
+)
+
+# --- Calculate and Plot the Regression Line ---
+# a. Prepare data for scikit-learn's LinearRegression model
+X = merged_df[['water_level_scaled']] # Independent variable (needs to be 2D)
+y = merged_df['volume_scaled']      # Dependent variable
+
+# b. Create and fit the linear regression model
+model = LinearRegression()
+model.fit(X, y)
+
+# c. Generate points for the regression line
+# We'll create a line based on the min and max x-values to draw across the plot
+x_fit = np.array([X.min(), X.max()]).reshape(-1, 1)
+y_fit = model.predict(x_fit)
+
+# d. Plot the regression line
+plt.plot(x_fit, y_fit, color='darkred', linestyle='--', label='Linear Regression')
+
+# --- Finalize the Plot ---
+# Add titles and labels for clarity
+plt.title('Validation: In-Situ Gauge Height vs. Satellite-Derived Volume', fontsize=16, pad=20)
+plt.xlabel('Standardized In-Situ Water Level (Z-score)', fontsize=12)
+plt.ylabel('Standardized Satellite-Derived Volume (Z-score)', fontsize=12)
+plt.grid(True, linestyle=':', alpha=0.7)
+plt.legend()
+
+# Add the RMSE value as text on the plot for context
+plt.text(
+    0.05, 0.95,
+    f'RMSE = {rmse:.4f}',
+    transform=plt.gca().transAxes,
+    fontsize=14,
+    verticalalignment='top',
+    bbox=dict(boxstyle='round,pad=0.5', fc='wheat', alpha=0.5)
+)
+
+# Show the plot
+plt.show()
